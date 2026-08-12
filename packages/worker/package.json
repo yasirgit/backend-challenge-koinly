@@ -1,0 +1,17 @@
+{
+  "name": "@app/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@app/application": "workspace:*",
+    "@app/domain": "workspace:*",
+    "@app/infrastructure": "workspace:*"
+  }
+}

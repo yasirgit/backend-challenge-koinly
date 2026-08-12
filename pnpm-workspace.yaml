@@ -1,0 +1,7 @@
+packages:
+  - 'packages/*'
+  # The end-to-end suite is a workspace package rather than a folder inside one, because it is the
+  # only thing in the repository that legitimately imports both entrypoints at once. Keeping it
+  # outside `packages/` means the rule "nothing depends on api or worker" stays true of shipping
+  # code, and the exception is visible instead of buried in a devDependency.
+  - 'tests/e2e'

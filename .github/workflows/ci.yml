@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  # Everything that needs no infrastructure. Fast enough to be the gate on every push.
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # Boundaries are only real if a machine checks them. These three steps are that check.
+      - name: Typecheck (project references enforce the layer graph)
+        run: pnpm typecheck
+      - name: Lint (determinism and configuration-access rules)
+        run: pnpm lint
+      - name: Dependency rules (intra-package layering, composition-root access)
+        run: pnpm depcruise
+
+      - name: Unit and use-case tests
+        run: pnpm test
+
+      # Vitest transpiles with esbuild; the image runs tsc output. Loading the built entrypoints
+      # catches emit differences that a green test run cannot see.
+      - name: Load the compiled entrypoints
+        run: pnpm smoke
+
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Start PostgreSQL and RabbitMQ
+        run: pnpm infra:up
+      - name: Apply migrations
+        run: pnpm migrate
+        env:
+          DATABASE_URL: postgres://koinly:koinly@localhost:55432/koinly_test
+      - name: Repository contract and end-to-end tests
+        run: pnpm test:integration
+      - name: Stop infrastructure
+        if: always()
+        run: pnpm infra:down

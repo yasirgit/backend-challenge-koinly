@@ -1,0 +1,17 @@
+{
+  "name": "@app/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@app/api": "workspace:*",
+    "@app/application": "workspace:*",
+    "@app/domain": "workspace:*",
+    "@app/infrastructure": "workspace:*",
+    "@app/worker": "workspace:*"
+  },
+  "devDependencies": {
+    "uuidv7": "^1.0.2",
+    "vitest": "^2.1.8"
+  }
+}

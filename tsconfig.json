@@ -1,0 +1,11 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/domain" },
+    { "path": "packages/application" },
+    { "path": "packages/infrastructure" },
+    { "path": "packages/api" },
+    { "path": "packages/worker" },
+    { "path": "tests/e2e" }
+  ]
+}

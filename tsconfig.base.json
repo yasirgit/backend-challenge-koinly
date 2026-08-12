@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": ["node"],
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "useUnknownInCatchVariables": true,
+
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+
+    "composite": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+
+    "paths": {
+      "@app/domain": ["./packages/domain/src/index.ts"],
+      "@app/application": ["./packages/application/src/index.ts"],
+      "@app/application/testing": ["./packages/application/src/testing/index.ts"],
+      "@app/infrastructure": ["./packages/infrastructure/src/index.ts"],
+      "@app/infrastructure/testing": ["./packages/infrastructure/src/testing/index.ts"],
+      "@app/api": ["./packages/api/src/index.ts"],
+      "@app/worker": ["./packages/worker/src/index.ts"]
+    }
+  }
+}

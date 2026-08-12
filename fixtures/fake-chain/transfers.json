@@ -1,0 +1,45 @@
+{
+  "chain": "ethereum",
+  "address": "0x71c7656ec7ab88b098defb751b7401b5f6d8976f",
+  "transfers": [
+    {
+      "txHash": "0xaa11bb22cc33dd44ee55ff6600112233445566778899aabbccddeeff00112233",
+      "logIndex": 0,
+      "blockTime": "2024-03-03T08:12:44.000Z",
+      "direction": "in",
+      "asset": { "symbol": "ETH", "contract": null },
+      "value": "1.250000000000000000",
+      "gasFee": null
+    },
+    {
+      "txHash": "0xbb22cc33dd44ee55ff660011223344556677889900aabbccddeeff0011223344",
+      "logIndex": 3,
+      "blockTime": "2024-03-04T17:05:09.000Z",
+      "direction": "out",
+      "asset": {
+        "symbol": "USDC",
+        "contract": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+      },
+      "value": "500.000000",
+      "gasFee": { "symbol": "ETH", "value": "0.001234567890123456" }
+    },
+    {
+      "txHash": "0xbb22cc33dd44ee55ff660011223344556677889900aabbccddeeff0011223344",
+      "logIndex": 4,
+      "blockTime": "2024-03-04T17:05:09.000Z",
+      "direction": "in",
+      "asset": { "symbol": "ETH", "contract": null },
+      "value": "0.199800000000000000",
+      "gasFee": null
+    },
+    {
+      "txHash": "0xcc33dd44ee55ff660011223344556677889900aabbccddeeff001122334455",
+      "logIndex": 0,
+      "blockTime": "2024-03-09T22:41:17.000Z",
+      "direction": "in",
+      "asset": { "symbol": "ETH", "contract": null },
+      "value": "0.000000000000000001",
+      "gasFee": null
+    }
+  ]
+}

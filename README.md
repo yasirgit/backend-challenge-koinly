@@ -1,84 +1,119 @@
-# Staff Backend Engineer — Take-Home Assignment
+# Crypto-tax backend skeleton
 
-## Context
+An architectural skeleton for the ingestion half of a crypto-tax product: an import is requested
+over HTTP, queued, normalized by a worker, written to PostgreSQL, and read back. Two source
+adapters run over fixtures, and the pipeline is safe to run twice.
 
-Imagine a crypto portfolio tracker and tax reporting product. Behind the product sits a
-distributed data-processing backend: it ingests raw transaction data from exchanges and
-blockchains, normalizes it into a common model, and reconciles it into numbers people
-file taxes with. Correctness is not negotiable — a wrong balance is a wrong tax return.
+The reasoning lives in [ARCHITECTURE.md](ARCHITECTURE.md); the scope in
+[REQUIREMENTS.md](REQUIREMENTS.md); the decisions in [docs/adr/](docs/adr/README.md). The original
+brief is [docs/ASSIGNMENT.md](docs/ASSIGNMENT.md).
 
-You're laying the technical foundation for a brand-new backend for such a product.
-Before any business logic gets written, the architecture needs to be in
-place: how the code is organized, where the boundaries are, how work flows through the
-system, and what keeps quality high as the team and codebase grow.
+## Run it
 
-That foundation is what we want you to build.
+Docker is the only prerequisite.
 
-## The Task
+```bash
+docker compose up --build -d --wait
+```
 
-Create the **architectural skeleton** of a backend data-processing service for a
-crypto-tax product.
+That builds one image and starts PostgreSQL, RabbitMQ, a one-shot migration, a one-shot seed, the
+API and the worker — in that order, each gated on the previous one being healthy or having exited
+successfully. When the command returns, the system is ready; there is no second setup step.
 
-We are explicitly **not** interested in business logic. No real tax math, no real
-blockchain integrations — stubs and fixtures are fine. What matters is the architecture,
-the boundaries, and the data model.
+- API: <http://localhost:3000> (`/healthz` for liveness, `/readyz` for dependencies)
+- RabbitMQ management UI: <http://localhost:15672> (`koinly` / `koinly`)
 
-Your skeleton should show:
+## See it work
 
-- **Structure & boundaries** — how the code is organized, which layers exist, and which
-  direction imports may flow. A new developer should know where new code belongs.
-- **Pipeline shape** — how an import flows through the system: intake → queue →
-  worker → persistence. Implementations can be stubs; we're looking at the seams,
-  including where idempotency and failure handling would live.
-- **Data model** — a PostgreSQL schema for a small slice of the domain (e.g. wallets and
-  transactions), with migrations. This is the part where design matters to us: entity
-  boundaries, keys, and how you represent monetary values.
-- **One thin end-to-end flow** — a fixture import (e.g. a CSV or a fake exchange
-  payload) travels through the queue, gets normalized by a worker, lands in PostgreSQL,
-  and is readable back via a minimal endpoint or CLI command. Plus a test or two showing
-  how testing is meant to work here.
+```bash
+./scripts/demo.sh
+```
 
-Everything else can be a stub — and stating what you stubbed is part of the task.
+The script requests an import, waits for the worker, prints the transactions, and then imports the
+same payload again to show that nothing is written twice. To do it by hand:
 
-## Constraints
+```bash
+USER=01900000-0000-7000-8000-00000000a001      # created by the seed service
+WALLET=01900000-0000-7000-8000-0000000000d1    # an acme_exchange_csv wallet
 
-- **TypeScript**, strict mode. The rest of the toolchain is your call (we run on Bun
-  with RabbitMQ, Redis, PostgreSQL, and Vitest — but pick what you can best defend).
-- It must start with a single command ``docker compose up`` bringing up the app and its infrastructure. No other setup
-  beyond Docker. A short note on how to trigger and observe the example flow belongs
-  in the README.
+# Request an import. 202 means accepted and queued.
+curl -s -X POST localhost:3000/v1/imports \
+  -H 'content-type: application/json' \
+  -H "x-user-id: $USER" \
+  -H 'idempotency-key: my-first-import' \
+  -d "{\"walletId\":\"$WALLET\",\"payloadRef\":\"acme-exchange/trades.csv\"}"
 
-## The Write-Up
+# Poll until status is completed; counts show total / imported / skipped.
+curl -s localhost:3000/v1/imports/<id> -H "x-user-id: $USER"
 
-Add a short `ARCHITECTURE.md` (one page is enough) covering:
+# Read the transactions back, newest first, with a keyset cursor.
+curl -s "localhost:3000/v1/wallets/$WALLET/transactions?limit=5" -H "x-user-id: $USER"
+```
 
-- The layers/boundaries you chose and why.
-- How the pipeline stays correct under failure: what happens on a retry, a duplicate
-  message, a crashed worker — even if only designed, not implemented.
-- What stops the structure from eroding as the codebase grows.
-- What you deliberately skipped and would add next.
+Things worth trying, because each demonstrates a design decision rather than a feature:
 
-## What We Evaluate
+| Try this | What it shows |
+| --- | --- |
+| Repeat the `POST` with the same `Idempotency-Key` | `200` and the original import, not a second one |
+| Repeat it with a *new* key and the same file | `imported: 0, skipped: 8` — row identity is derived from content |
+| Repeat it with the same key but a different body | `409`; the request is fingerprinted |
+| Import `fake-chain/transfers.json` into wallet `…00d2` | A second source adapter, same pipeline |
+| Import a `payloadRef` that does not exist | The import ends `failed` with a structured error, and the message is parked in `imports.dlq` |
+| `docker compose up -d --scale worker=3` and import again | Three consumers, one set of rows |
 
-1. Clarity of the structure — could a new hire find their way around without a tour?
-2. Are the boundaries real (enforced by tooling) or just folder names?
-3. Sound choices at the seams: queueing, persistence, external integrations, typing of
-   domain data (especially money).
-4. Rigor around correctness — does the design take determinism and idempotency
-   seriously, without over-building?
-5. Pragmatism — over-engineering is as much of a red flag as no structure at all.
-6. The reasoning in `ARCHITECTURE.md`.
+The seeded user owns two wallets: `…0000d1` for the CSV exchange export and `…0000d2` for the JSON
+chain payload. Fixtures live in [`fixtures/`](fixtures).
 
-## Scope & Time
+## API
 
-This should take about **4-6 hours**. Cut scope deliberately and say so in the write-up —
-that's what we'd expect from a staff engineer, not a shortcut. Using AI tools is fine,
-but you own every line: in the follow-up interview we'll walk through the code together
-and extend it a bit.
+| Method | Path | Notes |
+| --- | --- | --- |
+| `POST` | `/v1/wallets` | Register a wallet for a source; repeating it returns the existing one |
+| `POST` | `/v1/imports` | Accepts `Idempotency-Key`; `202` when queued, `200` on a replay |
+| `GET` | `/v1/imports/:id` | Status, attempt count, row counts, structured error |
+| `GET` | `/v1/wallets/:id/transactions` | Keyset pagination via `limit` and `cursor` |
+| `GET` | `/healthz`, `/readyz` | Liveness, and readiness including PostgreSQL and RabbitMQ |
 
-## Submission
+`x-user-id` stands in for an authenticated subject — see the skipped list in
+[ARCHITECTURE.md](ARCHITECTURE.md#7-deliberately-skipped). Every response carries
+`x-correlation-id`, echoed from the request when supplied, and it follows the work into the
+worker's logs.
 
-1. Create your own copy of this repository using the **"Use this template"** button
-   (please do not fork).
-2. Push your solution there, including a README covering how to run it.
-3. Send us the link when you're done.
+## Develop
+
+Node 22 and pnpm 9.
+
+```bash
+pnpm install
+pnpm check              # typecheck, lint, dependency rules, unit tests, compiled-artifact load
+
+pnpm infra:up           # PostgreSQL and RabbitMQ for tests, on their own ports
+pnpm test:integration   # repository contract against real Postgres, plus the end-to-end pipeline
+pnpm infra:down
+```
+
+Running the services outside Docker: `cp .env.example .env`, then `pnpm migrate && pnpm seed`, then
+`pnpm dev:api` and `pnpm dev:worker` in separate terminals.
+
+| Command | Purpose |
+| --- | --- |
+| `pnpm typecheck` | `tsc -b`; also enforces the layer graph through project references |
+| `pnpm lint` | Rules that protect invariants (no wall clock in the domain, no `process.env` outside config) |
+| `pnpm depcruise` | Module-graph rules: no cycles, adapters never import use cases |
+| `pnpm test` | Unit and use-case tests |
+| `pnpm smoke` | Builds, then loads every compiled entrypoint under plain Node |
+
+## Layout
+
+```
+packages/
+  domain/          entities, value objects, invariants, normalization  (depends on nothing)
+  application/     ports and use cases                                 (depends on domain)
+  infrastructure/  PostgreSQL, RabbitMQ, sources, config, logging      (implements the ports)
+  api/             HTTP entrypoint
+  worker/          queue entrypoint
+tests/e2e/         the one suite allowed to import both entrypoints
+fixtures/          sample exchange and chain payloads
+docker/            the image; docker-compose.yml is at the root
+docs/adr/          twelve decision records
+```

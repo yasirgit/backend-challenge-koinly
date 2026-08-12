@@ -1,0 +1,134 @@
+# The whole system, from `docker compose up --build`. Reviewers should not need Node, pnpm, or a
+# local PostgreSQL to see it work.
+#
+# The ordering rule is that nothing that talks to a dependency starts before that dependency is
+# healthy, and nothing that reads the schema starts before the migration has succeeded. Compose can
+# express both, so start-up races are not something anyone should have to debug here.
+
+name: koinly
+
+x-app-env: &app-env
+  NODE_ENV: production
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  DATABASE_URL: postgres://koinly:koinly@postgres:5432/koinly
+  RABBITMQ_URL: amqp://koinly:koinly@rabbitmq:5672
+  FIXTURES_DIR: /app/fixtures
+
+x-app-image: &app-image
+  build:
+    context: .
+    dockerfile: docker/Dockerfile
+  image: koinly-backend:local
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: koinly
+      POSTGRES_PASSWORD: koinly
+      POSTGRES_DB: koinly
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      # `pg_isready` alone reports true during the init phase, when the server is briefly up on a
+      # local socket only. Naming the database and user makes the check mean what it claims to.
+      test: ['CMD-SHELL', 'pg_isready -U koinly -d koinly']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: koinly
+      RABBITMQ_DEFAULT_PASS: koinly
+    ports:
+      - '${RABBITMQ_PORT:-5672}:5672'
+      - '${RABBITMQ_UI_PORT:-15672}:15672'
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'check_port_connectivity']
+      interval: 3s
+      timeout: 5s
+      retries: 30
+
+  # One-shot. Runs to completion and exits 0; api and worker wait for that exit code, so neither can
+  # observe a half-migrated schema. Migrations are idempotent, so re-running `up` is harmless.
+  migrate:
+    <<: *app-image
+    command: ['node', 'packages/infrastructure/dist/db/migrate.cli.js', 'up']
+    environment: *app-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: 'no'
+
+  # Also one-shot, and also idempotent (ON CONFLICT DO NOTHING). Provides the demo user, the assets
+  # the fixtures reference, and two wallets, so the README's curl commands work on a cold start.
+  seed:
+    <<: *app-image
+    command: ['node', 'packages/infrastructure/dist/db/seed.cli.js']
+    environment: *app-env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: 'no'
+
+  api:
+    <<: *app-image
+    command: ['node', 'packages/api/dist/main.js']
+    environment:
+      <<: *app-env
+      API_PORT: 3000
+      API_HOST: 0.0.0.0
+    ports:
+      - '${API_PORT:-3000}:3000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+    healthcheck:
+      # The image has no curl and adding one for a healthcheck is not worth the layer; the runtime
+      # already ships a fetch implementation. /readyz, not /healthz, so an api that cannot reach
+      # PostgreSQL or RabbitMQ is reported unhealthy rather than merely alive.
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+    # Docker sends SIGTERM and waits this long before SIGKILL. The api drains in-flight requests.
+    stop_grace_period: 15s
+    restart: unless-stopped
+
+  worker:
+    <<: *app-image
+    command: ['node', 'packages/worker/dist/main.js']
+    environment:
+      <<: *app-env
+      QUEUE_PREFETCH: ${QUEUE_PREFETCH:-4}
+      QUEUE_MAX_ATTEMPTS: ${QUEUE_MAX_ATTEMPTS:-5}
+      QUEUE_RETRY_DELAY_MS: ${QUEUE_RETRY_DELAY_MS:-5000}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+    # `docker compose up --scale worker=3` is the concurrency demo: advisory locks and the derived
+    # external_id mean three consumers of the same import produce one set of rows.
+    stop_grace_period: 30s
+    restart: unless-stopped
+
+volumes:
+  postgres-data:

@@ -1,0 +1,37 @@
+# Infrastructure for the integration tier. Separate ports and a separate database name so it can
+# run alongside `docker compose up` without either clobbering the other.
+# Started by `pnpm infra:up`, which waits for both healthchecks before returning.
+
+name: koinly-test
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: koinly
+      POSTGRES_PASSWORD: koinly
+      POSTGRES_DB: koinly_test
+    ports:
+      - '55432:5432'
+    tmpfs:
+      # Test data has no business surviving a restart, and tmpfs makes the suite noticeably faster.
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U koinly -d koinly_test']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: koinly
+      RABBITMQ_DEFAULT_PASS: koinly
+    ports:
+      - '55672:5672'
+      - '15673:15672'
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'check_running']
+      interval: 3s
+      timeout: 5s
+      retries: 30
