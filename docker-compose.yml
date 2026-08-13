@@ -47,6 +47,12 @@ services:
     ports:
       - '${RABBITMQ_PORT:-5672}:5672'
       - '${RABBITMQ_UI_PORT:-15672}:15672'
+    volumes:
+      # Persist the data directory, not /var/lib/rabbitmq itself. Mounting the parent hides the
+      # image's Erlang cookie behind a root-owned volume, and the broker then exits on
+      # `.erlang.cookie: eacces` before it ever listens. mnesia is enough for a restart; the cookie
+      # stays in the image layer where the rabbitmq user can read it.
+      - rabbitmq-data:/var/lib/rabbitmq/mnesia
     healthcheck:
       test: ['CMD', 'rabbitmq-diagnostics', '-q', 'check_port_connectivity']
       interval: 3s
@@ -132,3 +138,4 @@ services:
 
 volumes:
   postgres-data:
+  rabbitmq-data:

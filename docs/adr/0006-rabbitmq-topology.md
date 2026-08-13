@@ -31,6 +31,13 @@ koinly.imports (topic, durable)
   It is not derived from `x-death`, which is easy to misread across multi-hop dead-lettering.
 - A message whose envelope fails schema validation is a poison message: it goes straight to
   `imports.dlq` without retrying, because redelivering it will never produce a different result.
+- **Neither process reconnects.** amqplib does not reconnect on its own, and no attempt is made to
+  do it by hand: when the connection drops unprompted, the process logs it and exits non-zero so its
+  restart policy replaces it with one holding a live connection. Reconnecting properly means
+  redeclaring topology, re-registering consumers and reasoning about publishes that were in flight
+  when the socket died — a state machine whose failure modes are harder to test than the restart it
+  replaces. The restart is safe precisely because of the rest of this design: imports are durable
+  before they are published, unacknowledged messages are redelivered, and processing is idempotent.
 - Permanent failures (unknown source, unknown asset, malformed payload) also bypass retry. Unknown
   errors are treated as transient until attempts are exhausted, which is the safe default: a
   database blip should not permanently fail a batch of imports.

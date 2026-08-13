@@ -15,6 +15,16 @@ export const TEST_DATABASE_URL =
 export const TEST_RABBITMQ_URL =
   process.env['TEST_RABBITMQ_URL'] ?? 'amqp://koinly:koinly@localhost:55672';
 
+/**
+ * The retry delay every integration suite must declare.
+ *
+ * RabbitMQ treats queue arguments as immutable, so two suites asking for different TTLs on
+ * imports.normalize.retry means whichever connects second is refused with a 406 — a failure that
+ * depends on test ordering and says nothing about the code under test. Short, because the suites
+ * that wait for a retry would rather not.
+ */
+export const TEST_RETRY_DELAY_MS = 200;
+
 let migrated = false;
 
 export const connectTestDatabase = async (): Promise<DatabaseHandle> => {

@@ -18,18 +18,18 @@ const main = async (): Promise<void> => {
    * and the logs would fill with retries that were nobody's fault.
    */
   let shuttingDown = false;
-  const shutdown = (signal: string): void => {
+  const shutdown = (reason: string, code: number): void => {
     if (shuttingDown) {
       return;
     }
     shuttingDown = true;
-    container.logger.info({ signal }, 'draining before shutdown');
+    container.logger.info({ reason }, 'draining before shutdown');
 
     void (async () => {
       try {
         await consumer.stop();
         await container.close();
-        process.exit(0);
+        process.exit(code);
       } catch (error: unknown) {
         container.logger.error({ err: error }, 'shutdown failed');
         process.exit(1);
@@ -38,10 +38,20 @@ const main = async (): Promise<void> => {
   };
 
   process.on('SIGTERM', () => {
-    shutdown('SIGTERM');
+    shutdown('SIGTERM', 0);
   });
   process.on('SIGINT', () => {
-    shutdown('SIGINT');
+    shutdown('SIGINT', 0);
+  });
+
+  /**
+   * A worker that loses the broker stops consuming, and with nothing else holding the event loop it
+   * would drift out of the process exiting 0 — which looks like a clean shutdown in every log and
+   * dashboard. Saying so explicitly, with a non-zero code, keeps the restart honest.
+   */
+  container.onBrokerLost(() => {
+    container.logger.fatal('broker connection lost; exiting to be replaced with a live connection');
+    shutdown('broker-lost', 1);
   });
 };
 

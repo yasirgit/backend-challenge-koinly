@@ -16,13 +16,17 @@ COPY packages/application/package.json packages/application/
 COPY packages/infrastructure/package.json packages/infrastructure/
 COPY packages/api/package.json packages/api/
 COPY packages/worker/package.json packages/worker/
+# tests/e2e is a workspace member too, but only its manifest is needed here: pnpm resolves the
+# workspace from the lockfile, and the suite itself has no business in a runtime image.
+COPY tests/e2e/package.json tests/e2e/
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 
 FROM deps AS build
 COPY tsconfig.base.json tsconfig.json ./
 COPY packages packages
-# `tsc -b` walks the project references, so this also re-checks the layer graph at image build time.
-RUN pnpm build
+# Building the two entrypoints rather than the whole solution keeps test sources out of the image.
+# `tsc -b` walks their project references, so this still compiles — and re-checks — the layer graph.
+RUN pnpm exec tsc -b packages/api packages/worker
 
 # Production dependencies only, installed fresh rather than pruned, then the compiled output on top.
 FROM base AS runtime
@@ -33,6 +37,9 @@ COPY packages/application/package.json packages/application/
 COPY packages/infrastructure/package.json packages/infrastructure/
 COPY packages/api/package.json packages/api/
 COPY packages/worker/package.json packages/worker/
+# Same reason as the deps stage: the lockfile lists tests/e2e as a workspace importer, so a
+# frozen install fails unless the manifest is present. The suite itself is not copied.
+COPY tests/e2e/package.json tests/e2e/
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile --prod
 
 COPY --from=build /app/packages/domain/dist packages/domain/dist

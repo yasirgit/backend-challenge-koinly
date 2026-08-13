@@ -26,7 +26,7 @@ import {
   type ConsumerHandle,
   type DatabaseHandle,
 } from '@app/infrastructure';
-import { connectTestDatabase, TEST_RABBITMQ_URL } from '@app/infrastructure/testing';
+import { connectTestDatabase, TEST_RABBITMQ_URL, TEST_RETRY_DELAY_MS } from '@app/infrastructure/testing';
 import { createImportHandler } from '@app/worker';
 import { uuidv7 } from 'uuidv7';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -67,7 +67,11 @@ const FIXTURE_SYMBOLS = ['ETH', 'BTC', 'USDC', 'USDT', 'SOL'] as const;
 const setup = async (): Promise<Harness> => {
   const database = await connectTestDatabase();
   const logger = createLogger({ level: 'silent', service: 'e2e' });
-  const broker = await connectBroker({ url: TEST_RABBITMQ_URL, retryDelayMs: 200, logger });
+  const broker = await connectBroker({
+    url: TEST_RABBITMQ_URL,
+    retryDelayMs: TEST_RETRY_DELAY_MS,
+    logger,
+  });
 
   const userId = UserId(uuidv7());
   await database.db.insertInto('users').values({ id: userId, external_ref: `e2e-${userId}` }).execute();

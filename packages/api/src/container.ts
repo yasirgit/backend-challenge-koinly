@@ -34,6 +34,8 @@ export interface ApiContainer {
   readonly logger: AppLogger;
   readonly useCases: ApiUseCases;
   readonly checkReadiness: () => Promise<{ ok: boolean; checks: Record<string, boolean> }>;
+  /** Fires when the broker connection drops unprompted. See BrokerHandle.onLost. */
+  readonly onBrokerLost: (handler: () => void) => void;
   readonly close: () => Promise<void>;
 }
 
@@ -75,6 +77,7 @@ export const createApiContainer = async (): Promise<ApiContainer> => {
       const checks = { postgres: await database.ping(), rabbitmq: broker.isOpen() };
       return { ok: Object.values(checks).every(Boolean), checks };
     },
+    onBrokerLost: broker.onLost,
     close: async () => {
       await Promise.allSettled([broker.close(), database.close()]);
     },

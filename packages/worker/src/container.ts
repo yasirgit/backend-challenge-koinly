@@ -27,6 +27,8 @@ export interface WorkerContainer {
   readonly logger: AppLogger;
   readonly processImport: ProcessImportUseCase;
   readonly start: () => Promise<ConsumerHandle>;
+  /** Fires when the broker connection drops unprompted. See BrokerHandle.onLost. */
+  readonly onBrokerLost: (handler: () => void) => void;
   readonly close: () => Promise<void>;
 }
 
@@ -85,6 +87,7 @@ export const createWorkerContainer = async (): Promise<WorkerContainer> => {
           );
         },
       }),
+    onBrokerLost: broker.onLost,
     close: async () => {
       await Promise.allSettled([broker.close(), database.close()]);
     },
