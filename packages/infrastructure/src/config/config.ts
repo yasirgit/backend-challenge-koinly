@@ -64,7 +64,10 @@ export class ConfigurationError extends Error {
   }
 }
 
-const parseOrThrow = <S extends z.ZodTypeAny>(schema: S, env: NodeJS.ProcessEnv): z.output<S> => {
+const parseOrThrow = <Output>(
+  schema: z.ZodType<Output, z.ZodTypeDef, unknown>,
+  env: NodeJS.ProcessEnv,
+): Output => {
   const parsed = schema.safeParse(env);
   if (!parsed.success) {
     const issues = parsed.error.issues
