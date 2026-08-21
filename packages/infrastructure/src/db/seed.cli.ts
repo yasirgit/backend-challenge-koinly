@@ -1,4 +1,4 @@
-import { loadConfig } from '../config/config.js';
+import { loadDatabaseConfig } from '../config/config.js';
 import { createLogger } from '../observability/logger.js';
 import { formatError } from '../observability/to-error.js';
 import { createDatabase } from './client.js';
@@ -49,7 +49,7 @@ const ASSETS: readonly {
 ];
 
 const main = async (): Promise<void> => {
-  const config = loadConfig();
+  const config = loadDatabaseConfig();
   const logger = createLogger({ level: config.logLevel, service: 'seed' });
   const database = createDatabase(config.database);
 

@@ -1,4 +1,4 @@
-import { loadConfig } from '../config/config.js';
+import { loadDatabaseConfig } from '../config/config.js';
 import { createLogger } from '../observability/logger.js';
 import { formatError, toError } from '../observability/to-error.js';
 import { createDatabase } from './client.js';
@@ -9,7 +9,7 @@ import { migrateDown, migrateToLatest } from './migrator.js';
  * so the application never observes a schema it was not built against.
  */
 const main = async (): Promise<void> => {
-  const config = loadConfig();
+  const config = loadDatabaseConfig();
   const logger = createLogger({ level: config.logLevel, service: 'migrate' });
   const database = createDatabase(config.database);
 

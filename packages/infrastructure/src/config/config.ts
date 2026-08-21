@@ -12,13 +12,15 @@ import { z } from 'zod';
 const positiveInt = (fallback: number): z.ZodDefault<z.ZodNumber> =>
   z.coerce.number().int().positive().default(fallback);
 
-const configSchema = z.object({
+const databaseSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 
   DATABASE_URL: z.string().url(),
   DATABASE_POOL_MAX: positiveInt(10),
+});
 
+const configSchema = databaseSchema.extend({
   RABBITMQ_URL: z.string().url(),
   QUEUE_PREFETCH: positiveInt(4),
   QUEUE_MAX_ATTEMPTS: positiveInt(5),
@@ -52,6 +54,9 @@ export interface AppConfig {
   };
 }
 
+/** What migrate and seed actually use. They must not demand a broker they never open. */
+export type DatabaseCliConfig = Pick<AppConfig, 'nodeEnv' | 'logLevel' | 'database'>;
+
 export class ConfigurationError extends Error {
   constructor(issues: string) {
     super(`Invalid configuration:\n${issues}`);
@@ -59,20 +64,30 @@ export class ConfigurationError extends Error {
   }
 }
 
-export const loadConfig = (env: NodeJS.ProcessEnv = process.env): AppConfig => {
-  const parsed = configSchema.safeParse(env);
+const parseOrThrow = <S extends z.ZodTypeAny>(schema: S, env: NodeJS.ProcessEnv): z.output<S> => {
+  const parsed = schema.safeParse(env);
   if (!parsed.success) {
     const issues = parsed.error.issues
       .map((issue) => `  - ${issue.path.join('.')}: ${issue.message}`)
       .join('\n');
     throw new ConfigurationError(issues);
   }
+  return parsed.data;
+};
 
-  const value = parsed.data;
+const toDatabaseConfig = (value: z.infer<typeof databaseSchema>): DatabaseCliConfig => ({
+  nodeEnv: value.NODE_ENV,
+  logLevel: value.LOG_LEVEL,
+  database: { url: value.DATABASE_URL, poolMax: value.DATABASE_POOL_MAX },
+});
+
+export const loadDatabaseConfig = (env: NodeJS.ProcessEnv = process.env): DatabaseCliConfig =>
+  toDatabaseConfig(parseOrThrow(databaseSchema, env));
+
+export const loadConfig = (env: NodeJS.ProcessEnv = process.env): AppConfig => {
+  const value = parseOrThrow(configSchema, env);
   return {
-    nodeEnv: value.NODE_ENV,
-    logLevel: value.LOG_LEVEL,
-    database: { url: value.DATABASE_URL, poolMax: value.DATABASE_POOL_MAX },
+    ...toDatabaseConfig(value),
     queue: {
       url: value.RABBITMQ_URL,
       prefetch: value.QUEUE_PREFETCH,
